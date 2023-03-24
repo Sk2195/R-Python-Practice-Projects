@@ -1,12 +1,10 @@
-# Data Set link - https://www.kaggle.com/datasets/prevek18/ames-housing-dataset
-
-# Packages 
 library(dplyr)
 library(tidymodels)
 tidymodels_prefer()
 library(DescTools)
 library(stringr)
 library(caret)
+library(randomForest)
 # Load the file
 ames <- read.csv("C:/Users/chimi/Desktop/R Data Science Projects/AmesHousing.csv")
 
@@ -364,19 +362,29 @@ ames <- ames[, !names(ames) %in% cat_vars]
 # Convert everything to numeric
 ames <- apply(ames, 2, function(x) as.numeric(as.character(x)))
 
+# Convert price to log form/Nornalize it
+ames <-  log(ames$SalePrice)
+
 # Convert back into dataframe
 ames <- data.frame(ames)
 
-# Convert 
-train <- subset(ames, select = -SalePrice)
-test <-  log(ames$SalePrice)
 
-# Remove Zero-variance column
+set.seed(123) # for reproducibility
+trainIndex <- createDataPartition(ames$SalePrice, p = 0.8, list = FALSE)
+train <- ames[trainIndex,]
+test <- ames[-trainIndex,]
+
+
+# Remove the variables with Zero-Variance
 train <- train[, -nearZeroVar(train)]
 
-# Remove highly corrleated variables
-cor_matrix <- cor(train)
 
-highly_correlated <- findCorrelation(cor_matrix, cutoff = 0.7)
+# Build a simple linear regression model using the train dataset
+model <- lm(SalePrice ~ ., data = train)
 
-train <- train[, -highly_correlated]
+# Print the summary of the model
+# R^2 0.88
+summary(model)
+
+
+
