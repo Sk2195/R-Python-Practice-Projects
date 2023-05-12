@@ -1,0 +1,143 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
+
+```{r}
+library(readr)
+library(dplyr)
+library(stringr)
+library(purrr)
+library(tidyr)
+library(ggplot2)
+```
+# Import the file into R
+```{r}
+d75_survey <- read_tsv("C:/Users/chimi/Desktop/R Data Science Projects/Project 3 - NYC Public Schools/masterfile11_d75_final.txt")
+ge_survey <- read_tsv("C:/Users/chimi/Desktop/R Data Science Projects/Project 3 - NYC Public Schools/masterfile11_gened_final.txt")
+combined <- read_csv("C:/Users/chimi/Desktop/R Data Science Projects/Project 3 - NYC Public Schools/combined.csv")
+
+# Summary of survey 75 and general survey
+glimpse(d75_survey)
+
+glimpse(ge_survey)
+
+# Displays rows
+rows_d75_survey <- nrow(d75_survey)
+rows_ge_survey <- nrow(ge_survey)
+
+# Print the number of rows
+print(rows_d75_survey)
+print(rows_ge_survey)
+
+# Column names
+colnames(d75_survey)
+colnames(ge_survey)
+```
+
+```{r}
+gesurvey_select <- ge_survey %>%
+  filter(schooltype == "High School") %>%
+  select(dbn:aca_tot_11)
+```
+
+Select columns needed for analysis from ``.
+
+```{r}
+d75_surveyselect <- d75_survey %>%       
+  select(dbn:aca_tot_11)
+```
+
+Combine `survey` and `survey_d75` data frames.
+
+```{r}
+survey_total <- gesurvey_select %>% 
+  bind_rows(d75_surveyselect)
+```
+
+Rename `survey_total` variable `dbn` to `DBN` so can use as key to join with the `combined` data frame.
+
+```{r}
+survey_total <- survey_total %>%
+  rename(DBN = dbn)
+
+```
+Join the 'combined' and 'survey_total' datafrsames Use left_join to keep on the survey data
+```{r}
+combined_survey <- combined %>%
+  left_join(survey_total, by = "DBN")
+```
+
+# Create a corrleation matrix to look for interesting relationship between pair of variables in survey
+
+```{r}
+
+cor_mat <- combined_survey %>%    ## interesting relationshipsS
+  select(avg_sat_score, saf_p_11:aca_tot_11) %>%
+  cor(use = "pairwise.complete.obs")
+cor_tib <- cor_mat %>%
+  as_tibble(rownames = "variable")
+```
+Look for correlations of other variables with 'avg_sat_score' that are greater than 0.3 or less
+
+```{r}
+strong_cors <- cor_tib %>%
+  select(variable, avg_sat_score) %>%
+  filter(avg_sat_score > 0.25 | avg_sat_score < -0.25) 
+```
+
+
+```{r}
+create_scatter <- function(x, y) {     
+  ggplot(data = combined_survey) + 
+    aes_string(x = x, y = y) +
+    geom_point(alpha = 0.3) +
+    theme(panel.background = element_rect(fill = "white"))
+}
+x_var <- strong_cors$variable[2:5]
+y_var <- "avg_sat_score"
+  
+map2(x_var, y_var, create_scatter)
+```
+Reshape the data so that you can investigate differences in student, parent, and teacher responses to survey questions.
+
+```{r}
+# combined_survey_gather <- combined_survey %>%
+#   gather(key = "survey_question", value = score, saf_p_11:aca_tot_11)
+combined_survey_gather <- combined_survey %>%
+  pivot_longer(cols = saf_p_11:aca_tot_11,
+               names_to = "survey_question",
+               values_to = "score")
+```
+
+Use `str_sub()` to create new variables, `response_type` and `question`, from the `survey_question` variable.
+
+```{r}
+combined_survey_gather <- combined_survey_gather %>%
+  mutate(response_type = str_sub(survey_question, 4, 6)) %>%   
+  mutate(question = str_sub(survey_question, 1, 3))
+```
+
+Replace `response_type` variable values with names "parent", "teacher", "student", "total" using `if_else()` function.
+
+```{r}
+combined_survey_gather <- combined_survey_gather %>%
+  mutate(response_type = ifelse(response_type  == "_p_", "parent", 
+                                ifelse(response_type == "_t_", "teacher",
+                                       ifelse(response_type == "_s_", "student", 
+                                              ifelse(response_type == "_to", "total", "NA")))))
+```
+
+Make a boxplot to see if there appear to be differences in how the three groups of responders (parents, students, and teachers) answered the four questions. 
+
+```{r}
+combined_survey_gather %>%
+  filter(response_type != "total") %>%
+  ggplot(aes(x = question, y = score, fill = response_type)) +
+  geom_boxplot()
+```
+
